@@ -8,8 +8,9 @@ use errors::Result as LibResult;
 use neon::prelude::*;
 use serde;
 use serde::de::Visitor;
-use serde::de::{DeserializeOwned, DeserializeSeed, EnumAccess, MapAccess, SeqAccess, Unexpected,
-                VariantAccess};
+use serde::de::{
+    DeserializeOwned, DeserializeSeed, EnumAccess, MapAccess, SeqAccess, Unexpected, VariantAccess,
+};
 
 /// Deserialize an instance of type `T` from a `Handle<JsValue>`
 ///
@@ -20,6 +21,16 @@ use serde::de::{DeserializeOwned, DeserializeSeed, EnumAccess, MapAccess, SeqAcc
 pub fn from_value<'j, C, T>(cx: &mut C, value: Handle<'j, JsValue>) -> LibResult<T>
 where
     C: Context<'j>,
+    T: DeserializeOwned + ?Sized,
+{
+    let mut deserializer: Deserializer<C> = Deserializer::new(cx, value);
+    let t = T::deserialize(&mut deserializer)?;
+    Ok(t)
+}
+
+pub fn from_value_fn<'j, C, T>(cx: &mut C, value: Handle<'j, JsValue>) -> LibResult<T>
+where
+    C: FunctionContext<'j>,
     T: DeserializeOwned + ?Sized,
 {
     let mut deserializer: Deserializer<C> = Deserializer::new(cx, value);
@@ -50,14 +61,18 @@ impl<'a, 'j, C: Context<'j>> Deserializer<'a, 'j, C> {
 }
 
 #[doc(hidden)]
-impl<'x, 'd, 'a, 'j, C: Context<'j>> serde::de::Deserializer<'x> for &'d mut Deserializer<'a, 'j, C> {
+impl<'x, 'd, 'a, 'j, C: Context<'j>> serde::de::Deserializer<'x>
+    for &'d mut Deserializer<'a, 'j, C>
+{
     type Error = LibError;
 
     fn deserialize_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>
     where
         V: Visitor<'x>,
     {
-        if self.input.downcast::<JsNull, C>(self.cx).is_ok() || self.input.downcast::<JsUndefined, C>(self.cx).is_ok() {
+        if self.input.downcast::<JsNull, C>(self.cx).is_ok()
+            || self.input.downcast::<JsUndefined, C>(self.cx).is_ok()
+        {
             visitor.visit_unit()
         } else if let Ok(val) = self.input.downcast::<JsBoolean, C>(self.cx) {
             visitor.visit_bool(val.value(self.cx))
@@ -89,7 +104,9 @@ impl<'x, 'd, 'a, 'j, C: Context<'j>> serde::de::Deserializer<'x> for &'d mut Des
     where
         V: Visitor<'x>,
     {
-        if self.input.downcast::<JsNull, C>(self.cx).is_ok() || self.input.downcast::<JsUndefined, C>(self.cx).is_ok() {
+        if self.input.downcast::<JsNull, C>(self.cx).is_ok()
+            || self.input.downcast::<JsUndefined, C>(self.cx).is_ok()
+        {
             visitor.visit_none()
         } else {
             visitor.visit_some(self)
@@ -117,7 +134,10 @@ impl<'x, 'd, 'a, 'j, C: Context<'j>> serde::de::Deserializer<'x> for &'d mut Des
                     len
                 )))?
             }
-            let key = prop_names.get(self.cx, 0)?.downcast::<JsString, C>(self.cx).or_throw(self.cx)?;
+            let key = prop_names
+                .get(self.cx, 0)?
+                .downcast::<JsString, C>(self.cx)
+                .or_throw(self.cx)?;
             let enum_value = val.get(self.cx, key)?;
             let key_value = key.value(self.cx);
             visitor.visit_enum(JsEnumAccess::new(self.cx, key_value, Some(enum_value)))
@@ -131,7 +151,10 @@ impl<'x, 'd, 'a, 'j, C: Context<'j>> serde::de::Deserializer<'x> for &'d mut Des
     where
         V: Visitor<'x>,
     {
-        let buff = self.input.downcast::<JsBuffer, C>(self.cx).or_throw(self.cx)?;
+        let buff = self
+            .input
+            .downcast::<JsBuffer, C>(self.cx)
+            .or_throw(self.cx)?;
         let copy = self.cx.borrow(&buff, |buff| Vec::from(buff.as_slice()));
         visitor.visit_bytes(&copy)
     }
@@ -140,7 +163,10 @@ impl<'x, 'd, 'a, 'j, C: Context<'j>> serde::de::Deserializer<'x> for &'d mut Des
     where
         V: Visitor<'x>,
     {
-        let buff = self.input.downcast::<JsBuffer, C>(self.cx).or_throw(self.cx)?;
+        let buff = self
+            .input
+            .downcast::<JsBuffer, C>(self.cx)
+            .or_throw(self.cx)?;
         let copy = self.cx.borrow(&buff, |buff| Vec::from(buff.as_slice()));
         visitor.visit_byte_buf(copy)
     }
@@ -351,7 +377,7 @@ impl<'x, 'a, 'j, C: Context<'j>> VariantAccess<'x> for JsVariantAccess<'a, 'j, C
                         &"tuple variant",
                     ))
                 }
-            },
+            }
             None => Err(serde::de::Error::invalid_type(
                 Unexpected::UnitVariant,
                 &"tuple variant",
@@ -378,7 +404,7 @@ impl<'x, 'a, 'j, C: Context<'j>> VariantAccess<'x> for JsVariantAccess<'a, 'j, C
                         &"struct variant",
                     ))
                 }
-            },
+            }
             _ => Err(serde::de::Error::invalid_type(
                 Unexpected::UnitVariant,
                 &"struct variant",
